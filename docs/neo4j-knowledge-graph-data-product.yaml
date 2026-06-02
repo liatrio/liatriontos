@@ -1,0 +1,125 @@
+# ODPS v1.0.0 Data Product Definition
+# Neo4j Knowledge Graph — Flight Operations
+# Generated from live Neo4j instance via /api/neo4j/summary
+---
+apiVersion: v1.0.0
+kind: DataProduct
+
+id: neo4j-knowledge-graph-flight-ops
+name: Flight Operations Knowledge Graph
+version: "1.0.0"
+status: active
+domain: flight-operations
+tenant: data-platform
+
+description:
+  purpose: >
+    A Neo4j-backed knowledge graph that models relationships between aircraft,
+    flight legs, alerts, and maintenance events. Derived from Databricks tables
+    and fed via the neo4j-feeder-engine ETL pipeline.
+  usage: >
+    Use this data product to explore connected flight operations data —
+    trace alerts back to specific aircraft, flight legs, and maintenance actions.
+    Suitable for graph-based queries, path analysis, and relationship discovery.
+  limitations: >
+    Data freshness depends on the feeder engine schedule (currently daily batch).
+    The graph is read-only; writes go through the ETL pipeline only.
+
+# ===========================================================================
+# Output Port — Neo4j Graph (graph-specific extension to ODPS Server model)
+# ===========================================================================
+outputPorts:
+  - name: neo4j-graph-primary
+    version: "1.0.0"
+    description: >
+      Primary graph output — bolt connection to the Neo4j database containing
+      flight operations knowledge graph data.
+    port_type: neo4j-graph
+    status: active
+    contains_pii: false
+    auto_approve: false
+
+    server:
+      # Neo4j-specific fields (ODPS model extension)
+      bolt_url: "bolt://<neo4j-host>:7687"
+      database: "neo4j"
+      neo4j_labels:
+        - Aircraft
+        - FlightLeg
+        - Alert
+        - MaintenanceEvent
+        - Incremental
+      neo4j_relationships:
+        - OPERATED
+        - TRIGGERED
+        - RESOLVED_BY
+        - TRACKED_BY
+
+    # Custom properties for additional graph metadata
+    customProperties:
+      - property: totalNodes
+        value: "dynamic — call /api/neo4j/summary for live count"
+        description: Total node count in the graph
+      - property: totalRelationships
+        value: "dynamic — call /api/neo4j/summary for live count"
+        description: Total relationship count in the graph
+
+# ===========================================================================
+# Management Port — Live API for graph metadata and freshness
+# ===========================================================================
+managementPorts:
+  - name: neo4j-live-summary
+    content: observability
+    port_type: rest
+    url: "https://<ontos-app-host>/api/neo4j/summary?bolt_url=bolt://<neo4j-host>:7687&database=neo4j"
+    description: >
+      Live API endpoint that returns graph metadata (node counts, relationship types),
+      data freshness per feed, and connectivity status. Called by the Ontos product
+      detail view to display real-time graph info.
+
+  - name: neo4j-health-check
+    content: observability
+    port_type: rest
+    url: "https://<ontos-app-host>/api/neo4j/health?bolt_url=bolt://<neo4j-host>:7687&database=neo4j"
+    description: >
+      Health check endpoint — validates connectivity to the Neo4j instance.
+
+  - name: neo4j-metadata
+    content: discoverability
+    port_type: rest
+    url: "https://<ontos-app-host>/api/neo4j/metadata?bolt_url=bolt://<neo4j-host>:7687&database=neo4j"
+    description: >
+      Returns node labels, relationship types, and counts for graph exploration.
+
+  - name: neo4j-freshness
+    content: observability
+    port_type: rest
+    url: "https://<ontos-app-host>/api/neo4j/freshness?bolt_url=bolt://<neo4j-host>:7687&database=neo4j"
+    description: >
+      Returns last-load dates per feed from the Incremental tracker node.
+
+# ===========================================================================
+# Team & Support
+# ===========================================================================
+team:
+  name: Data Intelligence Platform
+  members:
+    - username: team-lead@example.com
+      name: Team Lead
+      role: owner
+
+support:
+  - channel: teams-data-platform
+    url: "https://teams.microsoft.com/l/channel/data-platform"
+    tool: teams
+    scope: interactive
+    description: Data platform team channel for questions and support
+
+# ===========================================================================
+# Tags
+# ===========================================================================
+tags:
+  - neo4j
+  - knowledge-graph
+  - flight-operations
+  - derived-product
