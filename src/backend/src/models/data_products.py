@@ -163,6 +163,11 @@ class Server(BaseModel):
     table: Optional[str] = Field(None, description="Table name (Postgres)")
     view: Optional[str] = Field(None, description="View name (Postgres)")
     share: Optional[str] = Field(None, description="Share name (Databricks)")
+    # Neo4j Knowledge Graph extension
+    bolt_url: Optional[str] = Field(None, description="Neo4j Bolt URL (neo4j+s://host:7687)")
+    neo4j_database: Optional[str] = Field(None, description="Neo4j database name (default: neo4j)")
+    neo4j_labels: Optional[str] = Field(None, description="Comma-separated node labels in the graph")
+    neo4j_relationships: Optional[str] = Field(None, description="Comma-separated relationship types in the graph")
     additionalProperties: Optional[str] = Field(None, description="Additional server properties")
 
     _parse_server_json = field_validator('*', mode='before')(parse_json_if_string)

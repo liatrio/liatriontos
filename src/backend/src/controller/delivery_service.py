@@ -55,6 +55,9 @@ class DeliveryChangeType(str, Enum):
     TAG_CREATE = "tag_create"            # Create tag namespace
     TAG_UPDATE = "tag_update"            # Update tag namespace
     TAG_DELETE = "tag_delete"            # Delete tag namespace
+    # Neo4j Knowledge Graph
+    NEO4J_EXPORT = "neo4j_export"        # Export/sync to Neo4j graph
+    NEO4J_METADATA_SYNC = "neo4j_metadata_sync"  # Sync metadata from Neo4j
 
 
 @dataclass
