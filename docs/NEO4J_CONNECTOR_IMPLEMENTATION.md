@@ -65,6 +65,18 @@ This feature adds Neo4j Knowledge Graph integration to Ontos, enabling:
 - A reachable Neo4j instance (bolt protocol)
 - Ontos backend running with PostgreSQL connection
 
+> **No Neo4j instance available?** You can run one locally with Docker:
+>
+> ```bash
+> docker run -d --name neo4j-local \
+>   -p 7474:7474 -p 7687:7687 \
+>   -e NEO4J_AUTH=neo4j/password \
+>   neo4j:5-community
+> ```
+>
+> Then use `bolt://localhost:7687` as your `bolt_url` in the YAML and API calls.
+> The default credentials will be `neo4j` / `password`.
+
 ### 1. Install the Neo4j Python driver
 
 ```bash
@@ -350,6 +362,58 @@ When deploying to Databricks Apps:
 - The Neo4j instance must be network-reachable from the Databricks App (AKS internal DNS works if on the same VNet)
 - The management port URL in the data product should point to the deployed app URL (not localhost)
 - Neo4j password should be managed via env vars or Databricks Secrets (not hardcoded)
+
+---
+
+## Quick Start for New Team Members
+
+If you're cloning this repo for the first time:
+
+```bash
+# 1. Clone the fork and checkout the branch
+git clone https://github.com/liatrio/liatriontos.git
+cd liatriontos
+git checkout feat/neo4j-data-product
+
+# 2. Set up Python environment
+cd src
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+pip install 'neo4j>=5.0.0'
+
+# 3. (If no remote Neo4j) Start a local Neo4j container
+docker run -d --name neo4j-local \
+  -p 7474:7474 -p 7687:7687 \
+  -e NEO4J_AUTH=neo4j/password \
+  neo4j:5-community
+
+# 4. Configure your .env (copy from the Environment Configuration section below)
+#    Key values to set:
+#    - POSTGRES_HOST, POSTGRES_PASSWORD (for Lakebase)
+#    - DATABRICKS_HOST, DATABRICKS_WAREHOUSE_ID
+#    - NEO4J_PASSWORD=password
+
+# 5. Start the backend
+PYTHONPATH=./backend .venv/bin/python backend/src/app.py
+
+# 6. In another terminal — start the frontend
+cd src/frontend
+yarn install
+yarn dev:frontend
+
+# 7. Test the Neo4j API
+curl 'http://localhost:8000/api/neo4j/health?bolt_url=bolt://localhost:7687'
+
+# 8. Import the sample data product
+curl -X POST http://localhost:8000/api/data-products/upload \
+  -F "file=@docs/neo4j-kg-data-product-local.yaml"
+```
+
+> **Note:** The sample YAML (`docs/neo4j-kg-data-product-local.yaml`) uses
+> `bolt://oem-kg.neo4j.internal:7687` as the Neo4j host. If you're running
+> Neo4j locally via Docker, edit the file and replace that with `bolt://localhost:7687`
+> before importing.
 
 ---
 
