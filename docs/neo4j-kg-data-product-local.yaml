@@ -1,0 +1,45 @@
+apiVersion: v1.0.0
+kind: DataProduct
+
+id: neo4j-kg-flight-ops
+name: Flight Operations Knowledge Graph
+version: "1.0.0"
+status: active
+domain: flight-operations
+tenant: data-platform
+
+description:
+  purpose: >
+    A Neo4j-backed knowledge graph that models relationships between aircraft,
+    flight legs, alerts, and maintenance events. Derived from Databricks tables
+    and fed via the neo4j-feeder-engine ETL pipeline.
+  usage: >
+    Use this data product to explore connected flight operations data —
+    trace alerts back to specific aircraft, flight legs, and maintenance actions.
+  limitations: >
+    Data freshness depends on the feeder engine schedule (currently daily batch).
+    The graph is read-only.
+
+outputPorts:
+  - name: neo4j-graph-primary
+    version: "1.0.0"
+    description: Bolt connection to the Neo4j flight ops knowledge graph.
+    port_type: neo4j-graph
+    status: active
+    contains_pii: false
+    server:
+      host: "bolt://oem-kg.neo4j.internal:7687"
+      database: "neo4j"
+
+managementPorts:
+  - name: neo4j-live-summary
+    content: observability
+    port_type: rest
+    url: "http://localhost:8000/api/neo4j/summary?bolt_url=bolt://oem-kg.neo4j.internal:7687&database=neo4j"
+    description: Live graph metadata — node counts, relationships, freshness.
+
+tags:
+  - neo4j
+  - knowledge-graph
+  - flight-operations
+  - derived-product

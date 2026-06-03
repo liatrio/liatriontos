@@ -385,6 +385,10 @@ settings_routes.register_routes(app)
 connection_routes.register_routes(app)
 schema_import_routes.register_routes(app)
 
+# Neo4j Connector routes
+from src.routes.neo4j_connector import router as neo4j_router
+app.include_router(neo4j_router)
+
 # Define other specific API routes BEFORE the catch-all
 @app.get("/api/time")
 async def get_current_time():

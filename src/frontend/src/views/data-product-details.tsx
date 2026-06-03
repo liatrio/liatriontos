@@ -50,6 +50,7 @@ import { BusinessLineageView } from '@/components/lineage';
 import { ReadinessChecklist } from '@/components/data-products/readiness-checklist';
 import { LineageEditor } from '@/components/common/lineage-editor';
 import { useCopilotContext } from '@/hooks/use-copilot-context';
+import Neo4jGraphPanel from '@/components/data-products/neo4j-graph-panel';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import type { QualitySummary } from '@/types/quality';
@@ -1738,6 +1739,9 @@ export default function DataProductDetails() {
           )}
         </CardContent>
       </Card>
+
+      {/* Neo4j Knowledge Graph Summary (auto-detected from management ports) */}
+      <Neo4jGraphPanel managementPorts={product.managementPorts} />
 
       {/* ODPS Structured Description */}
       {product.description && (

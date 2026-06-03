@@ -23,3 +23,4 @@ from . import semantic_models_routes
 from . import self_service_routes
 
 
+from . import neo4j_connector
