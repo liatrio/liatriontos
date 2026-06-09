@@ -19,6 +19,7 @@ from src.db_models.data_contracts import (
     DataContractSlaPropertyDb,
     SchemaObjectDb,
     SchemaObjectAuthoritativeDefinitionDb,
+    SchemaObjectRelationshipDb,
     SchemaPropertyDb,
     SchemaPropertyAuthoritativeDefinitionDb,
     DataQualityCheckDb,
@@ -65,6 +66,8 @@ class DataContractRepository(CRUDBase[DataContractDb, Dict[str, Any], Union[Dict
                         .selectinload(SchemaObjectDb.authoritative_definitions),
                     selectinload(self.model.schema_objects)
                         .selectinload(SchemaObjectDb.custom_properties),
+                    selectinload(self.model.schema_objects)
+                        .selectinload(SchemaObjectDb.relationships),
                     selectinload(self.model.comments),
                 )
                 .filter(self.model.id == id)

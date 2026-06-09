@@ -1301,9 +1301,10 @@ class DataContractsManager(DeliveryMixin, SearchableAsset):
                     schema_dict['customProperties'] = custom_props
 
                 # Schema-level relationships (ODCS v3.1.0)
-                if hasattr(schema_obj, 'relationships') and schema_obj.relationships:
+                _obj_rels = schema_obj.relationships if hasattr(schema_obj, 'relationships') else []
+                if _obj_rels:
                     rels = []
-                    for rel in schema_obj.relationships:
+                    for rel in _obj_rels:
                         rel_dict = {'type': rel.relationship_type}
                         try:
                             rel_dict['from'] = json.loads(rel.from_value)
@@ -6174,6 +6175,20 @@ class DataContractsManager(DeliveryMixin, SearchableAsset):
         for p in all_props:
             props_by_object.setdefault(p.object_id, []).append(p)
 
+        # Batch-load all schema-level relationships in one query
+        from src.db_models.data_contracts import SchemaObjectRelationshipDb as _SORDb
+        from src.models.data_contracts_api import SchemaRelationship as _SR
+        all_schema_rels: list = []
+        if schema_obj_ids:
+            all_schema_rels = (
+                db.query(_SORDb)
+                .filter(_SORDb.schema_object_id.in_(schema_obj_ids))
+                .all()
+            )
+        rels_by_object: Dict[str, list] = {}
+        for _r in all_schema_rels:
+            rels_by_object.setdefault(_r.schema_object_id, []).append(_r)
+
         for schema_obj in schema_obj_rows:
             # Convert DB properties to API dicts
             prop_items = []
@@ -6207,6 +6222,22 @@ class DataContractsManager(DeliveryMixin, SearchableAsset):
                 item.update(options)
                 prop_items.append(item)
 
+            # Schema-level relationships (graph topology, ODCS v3.1.0)
+            _rel_rows = rels_by_object.get(schema_obj.id, [])
+            _schema_rels = None
+            if _rel_rows:
+                _schema_rels = []
+                for _r in _rel_rows:
+                    try:
+                        _from = json.loads(_r.from_value)
+                    except (json.JSONDecodeError, TypeError):
+                        _from = _r.from_value
+                    try:
+                        _to = json.loads(_r.to_value)
+                    except (json.JSONDecodeError, TypeError):
+                        _to = _r.to_value
+                    _schema_rels.append(_SR(type=_r.relationship_type, **{"from": _from}, to=_to))
+
             schema_objects.append(SchemaObject(
                 name=schema_obj.name,
                 physicalName=schema_obj.physical_name,
@@ -6215,6 +6246,7 @@ class DataContractsManager(DeliveryMixin, SearchableAsset):
                 description=schema_obj.description,
                 properties=prop_items,
                 propertyCount=len(prop_items),
+                relationships=_schema_rels,
             ))
         
         # Build team (ODCS compliant)

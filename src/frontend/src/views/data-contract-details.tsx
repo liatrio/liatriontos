@@ -2291,10 +2291,15 @@ export default function DataContractDetails() {
                         <span className="ml-2 text-xs font-mono text-muted-foreground" title="ODCS StableId">{contract.schema[selectedSchemaIndex].stableId}</span>
                       )}
                       {contract.schema[selectedSchemaIndex]?.relationships && contract.schema[selectedSchemaIndex].relationships!.length > 0 && (
-                        <Badge variant="outline" className="ml-2 text-xs">
-                          <Link2 className="h-3 w-3 mr-1" />
-                          {contract.schema[selectedSchemaIndex].relationships!.length} FK{contract.schema[selectedSchemaIndex].relationships!.length > 1 ? 's' : ''}
-                        </Badge>
+                        <span className="ml-2 inline-flex flex-wrap items-center gap-1">
+                          {contract.schema[selectedSchemaIndex].relationships!.map((rel, idx) => (
+                            <Badge key={idx} variant="outline" className="text-xs font-mono gap-1">
+                              <Link2 className="h-3 w-3" />
+                              <span>-[{rel.type}]→</span>
+                              <span className="font-semibold">{Array.isArray(rel.to) ? rel.to.join(', ') : rel.to}</span>
+                            </Badge>
+                          ))}
+                        </span>
                       )}
                       {contract.schema[selectedSchemaIndex]?.name && schemaLinks[contract.schema[selectedSchemaIndex].name] && schemaLinks[contract.schema[selectedSchemaIndex].name].length > 0 && (
                         <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-2">
@@ -2441,10 +2446,15 @@ export default function DataContractDetails() {
                         <span className="ml-2 text-xs font-mono text-muted-foreground" title="ODCS StableId">{contract.schema[selectedSchemaIndex].stableId}</span>
                       )}
                       {contract.schema[selectedSchemaIndex]?.relationships && contract.schema[selectedSchemaIndex].relationships!.length > 0 && (
-                        <Badge variant="outline" className="ml-2 text-xs">
-                          <Link2 className="h-3 w-3 mr-1" />
-                          {contract.schema[selectedSchemaIndex].relationships!.length} FK{contract.schema[selectedSchemaIndex].relationships!.length > 1 ? 's' : ''}
-                        </Badge>
+                        <span className="ml-2 inline-flex flex-wrap items-center gap-1">
+                          {contract.schema[selectedSchemaIndex].relationships!.map((rel, idx) => (
+                            <Badge key={idx} variant="outline" className="text-xs font-mono gap-1">
+                              <Link2 className="h-3 w-3" />
+                              <span>-[{rel.type}]→</span>
+                              <span className="font-semibold">{Array.isArray(rel.to) ? rel.to.join(', ') : rel.to}</span>
+                            </Badge>
+                          ))}
+                        </span>
                       )}
                       {contract.schema[selectedSchemaIndex]?.name && schemaLinks[contract.schema[selectedSchemaIndex].name] && schemaLinks[contract.schema[selectedSchemaIndex].name].length > 0 && (
                         <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-2">

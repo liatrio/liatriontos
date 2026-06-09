@@ -5,6 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw, Database, CircleDot } from 'lucide-react';
 import type { ManagementPort } from '@/types/data-product';
 
+interface TopologyEdge {
+  from_label: string;
+  rel_type: string;
+  to_label: string;
+  count: number;
+}
+
 interface Neo4jSummary {
   connected: boolean;
   error: string | null;
@@ -17,6 +24,7 @@ interface Neo4jSummary {
     relationship_counts: Record<string, number>;
     total_nodes: number;
     total_relationships: number;
+    topology: TopologyEdge[];
   };
   freshness: Record<string, string>;
 }
@@ -101,10 +109,19 @@ graph:
   total_relationships: ${summary.graph.total_relationships}
 
   node_labels:
-${summary.graph.node_labels.map(l => `    - ${l}: ${summary.graph.node_counts[l]}`).join('\n')}
-
-  relationships:
-${summary.graph.relationship_types.map(r => `    - ${r}: ${summary.graph.relationship_counts[r]}`).join('\n')}
+${summary.graph.node_labels.map(label => {
+  const count = summary.graph.node_counts[label];
+  const topology = summary.graph.topology ?? [];
+  const outgoing = topology.filter(e => e.from_label === label);
+  const incoming = topology.filter(e => e.to_label === label && e.from_label !== label);
+  const links = [
+    ...outgoing.map(e => `      - -[${e.rel_type}]-> ${e.to_label} (${e.count})`),
+    ...incoming.map(e => `      - <-[${e.rel_type}]- ${e.from_label} (${e.count})`),
+  ];
+  return links.length > 0
+    ? `    - ${label}: ${count} nodes\n      linked_by:\n${links.join('\n')}`
+    : `    - ${label}: ${count} nodes`;
+}).join('\n')}
 
 freshness:
 ${Object.entries(summary.freshness).map(([feed, date]) => `  ${feed}: "${date}"`).join('\n')}`}

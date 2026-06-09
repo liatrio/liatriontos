@@ -23,6 +23,15 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class TopologyEdge:
+    """One (from_label)-[rel_type]->(to_label) edge in the graph schema topology."""
+    from_label: str
+    rel_type: str
+    to_label: str
+    count: int
+
+
+@dataclass
 class Neo4jGraphMetadata:
     """Metadata extracted from a Neo4j graph database."""
     node_labels: List[str]
@@ -31,6 +40,7 @@ class Neo4jGraphMetadata:
     relationship_counts: Dict[str, int]
     total_nodes: int
     total_relationships: int
+    topology: List[TopologyEdge]
     database: str
     connected: bool
     error: Optional[str] = None
@@ -99,6 +109,23 @@ class Neo4jDeliveryHandler:
                 )
                 relationship_counts = {r["type"]: r["count"] for r in rel_result}
 
+                # Topology: (from_label)-[rel_type]->(to_label)
+                topo_result = session.run(
+                    "MATCH (a)-[r]->(b) "
+                    "RETURN labels(a)[0] AS from_label, type(r) AS rel_type, "
+                    "labels(b)[0] AS to_label, count(*) AS count "
+                    "ORDER BY from_label, rel_type"
+                )
+                topology = [
+                    TopologyEdge(
+                        from_label=row["from_label"],
+                        rel_type=row["rel_type"],
+                        to_label=row["to_label"],
+                        count=row["count"],
+                    )
+                    for row in topo_result
+                ]
+
                 return Neo4jGraphMetadata(
                     node_labels=list(node_counts.keys()),
                     relationship_types=list(relationship_counts.keys()),
@@ -106,6 +133,7 @@ class Neo4jDeliveryHandler:
                     relationship_counts=relationship_counts,
                     total_nodes=sum(node_counts.values()),
                     total_relationships=sum(relationship_counts.values()),
+                    topology=topology,
                     database=self._database,
                     connected=True,
                 )
@@ -119,6 +147,7 @@ class Neo4jDeliveryHandler:
                 relationship_counts={},
                 total_nodes=0,
                 total_relationships=0,
+                topology=[],
                 database=self._database,
                 connected=False,
                 error=str(e),
@@ -165,6 +194,15 @@ class Neo4jDeliveryHandler:
                 "relationship_counts": metadata.relationship_counts,
                 "total_nodes": metadata.total_nodes,
                 "total_relationships": metadata.total_relationships,
+                "topology": [
+                    {
+                        "from_label": e.from_label,
+                        "rel_type": e.rel_type,
+                        "to_label": e.to_label,
+                        "count": e.count,
+                    }
+                    for e in metadata.topology
+                ],
             },
             "freshness": freshness,
         }

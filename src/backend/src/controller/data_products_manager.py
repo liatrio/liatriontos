@@ -2879,6 +2879,72 @@ class DataProductsManager(DeliveryMixin, SearchableAsset):
                     summary["errors"].append(f"Attr link failed {attr_id}: {e}")
                     summary["attributes_skipped"] += 1
 
+        # --- Phase 2: sync Neo4j topology → contract schema relationships ---
+        neo4j_port = next(
+            (p for p in (product.managementPorts or []) if p.url and "neo4j" in p.url),
+            None,
+        )
+        summary["relationships_linked"] = 0
+        summary["relationships_skipped"] = 0
+
+        if neo4j_port and neo4j_port.url:
+            from urllib.parse import urlparse, parse_qs
+            import json as _json
+            import os as _os
+            from src.controller.neo4j_delivery_handler import Neo4jDeliveryHandler
+            from src.db_models.data_contracts import SchemaObjectRelationshipDb
+
+            parsed = urlparse(neo4j_port.url)
+            params = parse_qs(parsed.query)
+            bolt_url = (params.get("bolt_url") or [None])[0]
+            database = (params.get("database") or ["neo4j"])[0]
+            username = (params.get("username") or ["neo4j"])[0]
+            password = _os.environ.get("NEO4J_PASSWORD", "password")
+
+            if bolt_url:
+                handler = Neo4jDeliveryHandler(bolt_url, username, password, database)
+                try:
+                    metadata = handler.get_graph_metadata()
+                    label_to_obj = {obj.name: obj for obj in schema_objects}
+                    schema_obj_ids = [obj.id for obj in schema_objects]
+
+                    # Bulk-fetch all existing schema object relationships in one query
+                    existing_rels = (
+                        session.query(SchemaObjectRelationshipDb)
+                        .filter(SchemaObjectRelationshipDb.schema_object_id.in_(schema_obj_ids))
+                        .all()
+                    )
+                    existing_keys = {
+                        (r.schema_object_id, r.relationship_type, r.to_value)
+                        for r in existing_rels
+                    }
+
+                    for edge in metadata.topology:
+                        source_obj = label_to_obj.get(edge.from_label)
+                        if not source_obj:
+                            continue
+                        to_val = _json.dumps(edge.to_label)
+                        key = (source_obj.id, edge.rel_type, to_val)
+                        if key in existing_keys:
+                            summary["relationships_skipped"] += 1
+                        else:
+                            session.add(SchemaObjectRelationshipDb(
+                                schema_object_id=source_obj.id,
+                                relationship_type=edge.rel_type,
+                                from_value=_json.dumps(edge.from_label),
+                                to_value=to_val,
+                                custom_properties_json=_json.dumps([
+                                    {"property": "count", "value": str(edge.count)}
+                                ]),
+                            ))
+                            existing_keys.add(key)
+                            summary["relationships_linked"] += 1
+                except Exception as e:
+                    summary["errors"].append(f"Neo4j topology sync failed: {e}")
+                    logger.warning(f"Neo4j topology sync failed: {e}", exc_info=True)
+                finally:
+                    handler.close()
+
         session.commit()
         return summary
 
