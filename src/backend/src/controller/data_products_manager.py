@@ -261,11 +261,93 @@ class DataProductsManager(DeliveryMixin, SearchableAsset):
                 project_id=project_id,
                 is_admin=is_admin
             )
-            products_with_tags = []
-            for product_db in products_db:
-                product_with_tags = self._load_product_with_tags(product_db)
-                products_with_tags.append(product_with_tags)
-            return products_with_tags
+            if not products_db:
+                return []
+
+            # Validate all DB rows into API models first
+            product_apis: List[DataProductApi] = []
+            for db_obj in products_db:
+                try:
+                    product_apis.append(DataProductApi.model_validate(db_obj))
+                except Exception as e:
+                    logger.error(f"Failed to validate product {db_obj.id}: {e}")
+
+            if not product_apis:
+                return []
+
+            # --- Batch-load all related data in 5 queries instead of N×(3+2M) ---
+
+            product_ids = [p.id for p in product_apis]
+
+            # Tags (batch method already exists)
+            tags_map: Dict[str, list] = {}
+            if self._tags_manager:
+                try:
+                    tags_map = self._entity_tag_repo.get_assigned_tags_for_entities(
+                        db=self._db, entity_ids=product_ids, entity_type="data_product"
+                    )
+                except Exception as e:
+                    logger.error(f"Batch tag load failed: {e}")
+
+            # Collect unique FK IDs across all products
+            owner_team_ids = list({p.owner_team_id for p in product_apis if p.owner_team_id})
+            proj_ids = list({p.project_id for p in product_apis if p.project_id})
+            contract_ids: set = set()
+            dm_ids: set = set()
+            for p in product_apis:
+                for port in (p.outputPorts or []):
+                    if port.contractId:
+                        contract_ids.add(port.contractId)
+                    if port.deliveryMethodId:
+                        dm_ids.add(port.deliveryMethodId)
+
+            # Teams
+            from src.db_models.teams import TeamDb as _TeamDb
+            teams_map: Dict[str, str] = {}
+            if owner_team_ids:
+                rows = self._db.query(_TeamDb.id, _TeamDb.name).filter(_TeamDb.id.in_(owner_team_ids)).all()
+                teams_map = {r.id: r.name for r in rows}
+
+            # Projects
+            from src.db_models.projects import ProjectDb as _ProjectDb
+            projects_map: Dict[str, str] = {}
+            if proj_ids:
+                rows = self._db.query(_ProjectDb.id, _ProjectDb.name).filter(_ProjectDb.id.in_(proj_ids)).all()
+                projects_map = {r.id: r.name for r in rows}
+
+            # Contracts (name only)
+            from src.db_models.data_contracts import DataContractDb as _DataContractDb
+            contracts_map: Dict[str, str] = {}
+            if contract_ids:
+                rows = self._db.query(_DataContractDb.id, _DataContractDb.name).filter(
+                    _DataContractDb.id.in_(contract_ids)
+                ).all()
+                contracts_map = {r.id: r.name for r in rows}
+
+            # Delivery methods (name only)
+            from src.db_models.delivery_methods import DeliveryMethodDb as _DeliveryMethodDb
+            dms_map: Dict[str, str] = {}
+            if dm_ids:
+                rows = self._db.query(_DeliveryMethodDb.id, _DeliveryMethodDb.name).filter(
+                    _DeliveryMethodDb.id.in_(dm_ids)
+                ).all()
+                dms_map = {r.id: r.name for r in rows}
+
+            # Enrich each API model with resolved names from the maps
+            for p in product_apis:
+                p.tags = tags_map.get(p.id, [])
+                if p.owner_team_id:
+                    p.owner_team_name = teams_map.get(p.owner_team_id)
+                if p.project_id:
+                    p.project_name = projects_map.get(p.project_id)
+                for port in (p.outputPorts or []):
+                    if port.contractId:
+                        port.contractName = contracts_map.get(port.contractId)
+                    if port.deliveryMethodId:
+                        port.deliveryMethodName = dms_map.get(port.deliveryMethodId)
+
+            return product_apis
+
         except SQLAlchemyError as e:
             logger.error(f"Database error listing products: {e}")
             raise

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { AlertCircle, Download, Pencil, Trash2, Loader2, ArrowLeft, FileText, KeyRound, CopyPlus, Plus, Shapes, Columns2, Database, Sparkles, Package, ChevronLeft, ChevronRight, ShieldCheck, Globe, Link2 } from 'lucide-react'
+import { AlertCircle, Download, Pencil, Trash2, Loader2, ArrowLeft, FileText, KeyRound, CopyPlus, Plus, Shapes, Columns2, Database, Sparkles, Package, ChevronLeft, ChevronRight, ShieldCheck, Globe, Link2, ArrowRight } from 'lucide-react'
 import { DetailViewSkeleton } from '@/components/common/list-view-skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
@@ -730,7 +730,15 @@ export default function DataContractDetails() {
     const schema = contract.schema[selectedSchemaIndex]
     if (!schema) return
     if (!schemaProperties[schema.name]) {
-      fetchSchemaProperties(schema.name, 0)
+      // Use properties already in the contract response when they fit on a single page
+      // (avoids a separate round-trip; fall back to paginated API for large schemas)
+      const inlineProps = schema.properties as unknown as SchemaProperty[]
+      if (inlineProps && inlineProps.length > 0 && inlineProps.length <= PROPS_PAGE_SIZE) {
+        setSchemaProperties(prev => ({ ...prev, [schema.name]: inlineProps }))
+        setSchemaPropTotal(prev => ({ ...prev, [schema.name]: schema.propertyCount ?? inlineProps.length }))
+      } else {
+        fetchSchemaProperties(schema.name, 0)
+      }
     }
     if (!schemaLinks[schema.name]) {
       fetchSchemaSemanticLinks(schema.name)
@@ -2291,13 +2299,13 @@ export default function DataContractDetails() {
                         <span className="ml-2 text-xs font-mono text-muted-foreground" title="ODCS StableId">{contract.schema[selectedSchemaIndex].stableId}</span>
                       )}
                       {contract.schema[selectedSchemaIndex]?.relationships && contract.schema[selectedSchemaIndex].relationships!.length > 0 && (
-                        <span className="ml-2 inline-flex flex-wrap items-center gap-1">
+                        <span className="ml-2 inline-flex flex-wrap items-center gap-x-3 gap-y-0.5">
                           {contract.schema[selectedSchemaIndex].relationships!.map((rel, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs font-mono gap-1">
-                              <Link2 className="h-3 w-3" />
-                              <span>-[{rel.type}]→</span>
-                              <span className="font-semibold">{Array.isArray(rel.to) ? rel.to.join(', ') : rel.to}</span>
-                            </Badge>
+                            <span key={idx} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                              <span>{rel.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                              <ArrowRight className="h-3 w-3" />
+                              <span className="font-medium text-foreground">{Array.isArray(rel.to) ? rel.to.join(', ') : rel.to}</span>
+                            </span>
                           ))}
                         </span>
                       )}
@@ -2446,13 +2454,13 @@ export default function DataContractDetails() {
                         <span className="ml-2 text-xs font-mono text-muted-foreground" title="ODCS StableId">{contract.schema[selectedSchemaIndex].stableId}</span>
                       )}
                       {contract.schema[selectedSchemaIndex]?.relationships && contract.schema[selectedSchemaIndex].relationships!.length > 0 && (
-                        <span className="ml-2 inline-flex flex-wrap items-center gap-1">
+                        <span className="ml-2 inline-flex flex-wrap items-center gap-x-3 gap-y-0.5">
                           {contract.schema[selectedSchemaIndex].relationships!.map((rel, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs font-mono gap-1">
-                              <Link2 className="h-3 w-3" />
-                              <span>-[{rel.type}]→</span>
-                              <span className="font-semibold">{Array.isArray(rel.to) ? rel.to.join(', ') : rel.to}</span>
-                            </Badge>
+                            <span key={idx} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                              <span>{rel.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                              <ArrowRight className="h-3 w-3" />
+                              <span className="font-medium text-foreground">{Array.isArray(rel.to) ? rel.to.join(', ') : rel.to}</span>
+                            </span>
                           ))}
                         </span>
                       )}
