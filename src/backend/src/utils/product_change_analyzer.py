@@ -110,8 +110,8 @@ class ProductChangeAnalyzer:
 
         # Analyze team changes
         self._analyze_team_changes(
-            old_product.get('team', {}).get('members', []),
-            new_product.get('team', {}).get('members', [])
+            (old_product.get('team') or {}).get('members', []),
+            (new_product.get('team') or {}).get('members', [])
         )
 
         # Analyze support channel changes

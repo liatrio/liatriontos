@@ -1270,6 +1270,50 @@ async def unlink_dataset_from_product(
         )
 
 
+@router.post('/data-products/{product_id}/sync-graph-attributes', status_code=200)
+async def sync_graph_attributes(
+    product_id: str,
+    request: Request,
+    db: DBSessionDep,
+    audit_manager: AuditManagerDep,
+    current_user: AuditCurrentUserDep,
+    background_tasks: BackgroundTasks,
+    manager: DataProductsManager = Depends(get_data_products_manager),
+    _: bool = Depends(PermissionChecker(DATA_PRODUCTS_FEATURE_ID, FeatureAccessLevel.READ_WRITE)),
+):
+    """Sync Neo4j graph schema from the linked ODCS contract into Dataset assets
+    and LogicalAttribute entity relationships, so the production readiness check
+    for logical attribute mappings can pass.
+
+    Idempotent — safe to re-run. Existing assets and relationships are reused.
+    """
+    success = False
+    details = {"product_id": product_id, "action": "sync_graph_attributes"}
+    try:
+        result = manager.sync_graph_attributes(
+            product_id=product_id,
+            db=db,
+            current_user=current_user.username if current_user else "system",
+        )
+        success = True
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error syncing graph attributes for product {product_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        background_tasks.add_task(
+            audit_manager.log_action_background,
+            username=current_user.username,
+            ip_address=request.client.host if request.client else None,
+            feature=DATA_PRODUCTS_FEATURE_ID,
+            action="SYNC_GRAPH_ATTRIBUTES",
+            success=success,
+            details=details,
+        )
+
+
 # --- Utility Endpoints ---
 
 @router.get('/data-products/statuses', response_model=List[str])

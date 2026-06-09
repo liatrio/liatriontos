@@ -70,7 +70,24 @@ def get_readiness_report(
     # 2. At least one output port / contract
     output_ports = product.outputPorts or []
     has_output = len(output_ports) > 0
-    contract_count = sum(1 for op in output_ports if op.customProperties and op.customProperties.get("contract_id"))
+
+    def _has_contract(op) -> bool:
+        # Primary: direct contractId field on OutputPort
+        if getattr(op, "contractId", None) or getattr(op, "contract_id", None):
+            return True
+        # Fallback: customProperties list
+        cp = op.customProperties
+        if not cp:
+            return False
+        if isinstance(cp, dict):
+            return bool(cp.get("contract_id"))
+        for item in cp:
+            key = item.get("property") if isinstance(item, dict) else getattr(item, "property", None)
+            if key == "contract_id":
+                return True
+        return False
+
+    contract_count = sum(1 for op in output_ports if _has_contract(op))
     checks.append(ReadinessCheck(
         name="At least one output contract",
         status="pass" if contract_count > 0 else ("warn" if has_output else "fail"),

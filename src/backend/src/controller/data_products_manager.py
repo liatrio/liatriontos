@@ -2754,6 +2754,134 @@ class DataProductsManager(DeliveryMixin, SearchableAsset):
         session.commit()
         return True
 
+    def sync_graph_attributes(
+        self,
+        product_id: str,
+        db: Optional[Session] = None,
+        current_user: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Materialise Neo4j graph schema as Dataset assets + LogicalAttribute relationships.
+
+        For each SchemaObject in the linked ODCS contract:
+          - Find or create a Dataset asset (platform=Neo4j, location=neo4j:<Label>)
+          - Create hasDataset: DataProduct → Dataset
+          - Create implementedBy: LogicalAttribute → Dataset (one per property)
+
+        Idempotent — safe to re-run; existing records are reused.
+        """
+        from uuid import UUID as _UUID
+        from src.db_models.assets import AssetDb
+        from src.db_models.entity_relationships import EntityRelationshipDb
+        from src.repositories.data_contracts_repository import data_contract_repo
+
+        session = db or self._db
+        DATASET_TYPE_ID = _UUID("b8888d64-2dc5-4c21-892d-142e1ea9631a")
+
+        summary: Dict[str, Any] = {
+            "product_id": product_id,
+            "datasets_created": 0,
+            "datasets_reused": 0,
+            "attributes_linked": 0,
+            "attributes_skipped": 0,
+            "errors": [],
+        }
+
+        product = self.get_product(product_id)
+        if not product:
+            raise ValueError(f"Product {product_id} not found")
+
+        contract_id = next(
+            (getattr(p, "contractId", None) for p in (product.outputPorts or []) if getattr(p, "contractId", None)),
+            None,
+        )
+        if not contract_id:
+            raise ValueError("No contract linked to any output port")
+
+        contract_db = data_contract_repo.get(session, id=contract_id)
+        if not contract_db:
+            raise ValueError(f"Contract {contract_id} not found")
+
+        schema_objects = contract_db.schema_objects
+        if not schema_objects:
+            raise ValueError("Contract has no schema objects to sync")
+
+        for schema_obj in schema_objects:
+            label = schema_obj.name
+            node_location = f"neo4j:{label}"
+
+            existing = asset_repo.get_by_name_and_type(session, name=label, asset_type_id=DATASET_TYPE_ID)
+            if existing:
+                dataset_id = str(existing.id)
+                summary["datasets_reused"] += 1
+            else:
+                try:
+                    db_asset = AssetDb(
+                        name=label,
+                        description=schema_obj.description or f"Neo4j node label: {label}",
+                        asset_type_id=DATASET_TYPE_ID,
+                        platform="Neo4j",
+                        location=node_location,
+                        properties={"label": label, "source": "neo4j-contract", "contract_id": contract_id},
+                        status="active",
+                        created_by=current_user or "system",
+                    )
+                    session.add(db_asset)
+                    session.flush()
+                    session.refresh(db_asset)
+                    dataset_id = str(db_asset.id)
+                    summary["datasets_created"] += 1
+                except Exception as e:
+                    summary["errors"].append(f"Dataset create failed for {label}: {e}")
+                    session.rollback()
+                    continue
+
+            if not entity_relationship_repo.find_existing(
+                session,
+                source_type="DataProduct", source_id=product_id,
+                target_type="Dataset", target_id=dataset_id,
+                relationship_type="hasDataset",
+            ):
+                session.add(EntityRelationshipDb(
+                    source_type="DataProduct", source_id=product_id,
+                    target_type="Dataset", target_id=dataset_id,
+                    relationship_type="hasDataset",
+                    properties={"label": label},
+                    created_by=current_user or "system",
+                ))
+
+            for prop in (schema_obj.properties or []):
+                attr_id = f"{dataset_id}.{prop.name}"
+                if entity_relationship_repo.find_existing(
+                    session,
+                    source_type="LogicalAttribute", source_id=attr_id,
+                    target_type="Dataset", target_id=dataset_id,
+                    relationship_type="implementedBy",
+                ):
+                    summary["attributes_skipped"] += 1
+                    continue
+                try:
+                    session.add(EntityRelationshipDb(
+                        source_type="LogicalAttribute",
+                        source_id=attr_id,
+                        target_type="Dataset",
+                        target_id=dataset_id,
+                        relationship_type="implementedBy",
+                        properties={
+                            "name": prop.name,
+                            "logical_type": prop.logical_type,
+                            "primary_key": prop.primary_key,
+                            "label": label,
+                        },
+                        created_by=current_user or "system",
+                    ))
+                    summary["attributes_linked"] += 1
+                except Exception as e:
+                    summary["errors"].append(f"Attr link failed {attr_id}: {e}")
+                    summary["attributes_skipped"] += 1
+
+        session.commit()
+        return summary
+
     def get_team_members_for_import(
         self,
         product_id: str,
