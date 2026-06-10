@@ -5955,7 +5955,18 @@ class DataContractsManager(DeliveryMixin, SearchableAsset):
     def _query_contracts(self, db, domain_id=None, project_id=None, is_admin=False, latest_only=True):
         """Shared query logic for listing contracts. Returns list of DataContractDb."""
         if domain_id:
-            query = db.query(DataContractDb).filter(DataContractDb.domain_id == domain_id)
+            from sqlalchemy.orm import noload as _noload
+            query = (
+                db.query(DataContractDb)
+                .options(
+                    _noload(DataContractDb.tags), _noload(DataContractDb.servers),
+                    _noload(DataContractDb.roles), _noload(DataContractDb.team),
+                    _noload(DataContractDb.support), _noload(DataContractDb.pricing),
+                    _noload(DataContractDb.authoritative_defs), _noload(DataContractDb.custom_properties),
+                    _noload(DataContractDb.sla_properties), _noload(DataContractDb.team_metadata),
+                )
+                .filter(DataContractDb.domain_id == domain_id)
+            )
             if not is_admin and project_id:
                 logger.debug(f"Filtering contracts by project_id: {project_id} and domain_id: {domain_id}")
                 query = query.filter(
@@ -5990,9 +6001,120 @@ class DataContractsManager(DeliveryMixin, SearchableAsset):
         is_admin: bool = False,
         latest_only: bool = True
     ):
-        """List data contracts as lightweight summaries (no schema/quality/comments)."""
-        contracts = self._query_contracts(db, domain_id, project_id, is_admin, latest_only)
-        return self._build_contract_summaries(db, contracts)
+        """List data contracts as lightweight summaries using a single JOIN query."""
+        from src.models.data_contracts_api import ContractDescription, DataContractSummary
+        from src.repositories.tags_repository import entity_tag_repo
+        from sqlalchemy import func as sa_func
+        from src.db_models.data_domains import DataDomain as DataDomainDb
+        from src.db_models.teams import TeamDb
+        from src.db_models.projects import ProjectDb
+        from src.db_models.data_contracts import SchemaObjectDb as _SODb
+
+        # Single query: contracts + LEFT JOINs for names + schema count
+        q = (
+            db.query(
+                DataContractDb.id,
+                DataContractDb.name,
+                DataContractDb.kind,
+                DataContractDb.api_version,
+                DataContractDb.version,
+                DataContractDb.status,
+                DataContractDb.owner_team_id,
+                DataContractDb.project_id,
+                DataContractDb.domain_id,
+                DataContractDb.tenant,
+                DataContractDb.data_product,
+                DataContractDb.description_usage,
+                DataContractDb.description_purpose,
+                DataContractDb.description_limitations,
+                DataContractDb.created_at,
+                DataContractDb.updated_at,
+                DataContractDb.publication_scope,
+                DataContractDb.published_at,
+                DataContractDb.published_by,
+                DataContractDb.base_name,
+                DataContractDb.change_summary,
+                DataContractDb.parent_contract_id,
+                DataContractDb.draft_owner_id,
+                DataDomainDb.name.label('domain_name'),
+                TeamDb.name.label('team_name'),
+                ProjectDb.name.label('project_name'),
+                sa_func.count(_SODb.id).label('schema_count'),
+            )
+            .outerjoin(DataDomainDb, DataContractDb.domain_id == DataDomainDb.id)
+            .outerjoin(TeamDb, DataContractDb.owner_team_id == TeamDb.id)
+            .outerjoin(ProjectDb, DataContractDb.project_id == ProjectDb.id)
+            .outerjoin(_SODb, _SODb.contract_id == DataContractDb.id)
+            .group_by(
+                DataContractDb.id, DataDomainDb.name, TeamDb.name, ProjectDb.name
+            )
+        )
+
+        if domain_id:
+            q = q.filter(DataContractDb.domain_id == domain_id)
+        if not is_admin and project_id:
+            q = q.filter(
+                (DataContractDb.project_id == project_id) |
+                (DataContractDb.project_id.is_(None))
+            )
+
+        rows = q.limit(500).all()
+
+        if latest_only:
+            seen: dict = {}
+            for row in rows:
+                key = row.base_name or row.name
+                if key not in seen or row.created_at > seen[key].created_at:
+                    seen[key] = row
+            rows = list(seen.values())
+            logger.debug(f"list_contracts_from_db: filtered to {len(rows)} latest versions")
+
+        if not rows:
+            return []
+
+        contract_ids = [row.id for row in rows]
+        tags_map = {}
+        try:
+            tags_map = entity_tag_repo.get_assigned_tags_for_entities(
+                db, entity_ids=contract_ids, entity_type="data_contract"
+            )
+        except Exception as e:
+            logger.debug(f"Batch tag load failed: {e}")
+
+        results = []
+        for row in rows:
+            description = None
+            if row.description_usage or row.description_purpose or row.description_limitations:
+                description = ContractDescription(
+                    usage=row.description_usage,
+                    purpose=row.description_purpose,
+                    limitations=row.description_limitations,
+                )
+            results.append(DataContractSummary(
+                id=row.id,
+                name=row.name,
+                version=row.version,
+                status=row.status,
+                owner_team_id=row.owner_team_id,
+                owner_team_name=row.team_name,
+                project_id=row.project_id,
+                project_name=row.project_name,
+                kind=row.kind,
+                apiVersion=row.api_version,
+                tenant=row.tenant,
+                domain=row.domain_name,
+                domainId=row.domain_id,
+                dataProduct=row.data_product,
+                description=description,
+                tags=tags_map.get(row.id, []),
+                created=row.created_at.isoformat() if row.created_at else None,
+                updated=row.updated_at.isoformat() if row.updated_at else None,
+                schemaObjectCount=row.schema_count or 0,
+                publication_scope=row.publication_scope or "none",
+                published_at=row.published_at.isoformat() if row.published_at else None,
+                published_by=row.published_by,
+            ))
+        return results
 
     def _build_contract_summaries(self, db, contracts):
         """Build lightweight summary models for a list of contracts with batched lookups."""
@@ -6009,7 +6131,7 @@ class DataContractsManager(DeliveryMixin, SearchableAsset):
         domain_map = {}
         if domain_ids:
             try:
-                from src.db_models.data_domains import DataDomainDb
+                from src.db_models.data_domains import DataDomain as DataDomainDb
                 rows = db.query(DataDomainDb.id, DataDomainDb.name).filter(DataDomainDb.id.in_(domain_ids)).all()
                 domain_map = {str(r.id): r.name for r in rows}
             except Exception as e:

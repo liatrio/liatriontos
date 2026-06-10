@@ -5,7 +5,7 @@ This module implements the repository layer for ODPS v1.0.0 Data Products.
 Handles mapping between API models (Pydantic) and DB models (SQLAlchemy).
 """
 
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, selectinload, noload
 from sqlalchemy import select, distinct, or_, and_
 from typing import List, Optional, Any, Dict, Union
 import json
@@ -510,15 +510,16 @@ class DataProductRepository(CRUDBase[DataProductDb, DataProductCreate, DataProdu
         logger.debug(f"Fetching multiple ODPS v1.0.0 DataProducts (skip: {skip}, limit: {limit}, project_id: {project_id}, is_admin: {is_admin})")
         try:
             query = db.query(self.model).options(
-                selectinload(self.model.description),
-                selectinload(self.model.authoritative_definitions),
-                selectinload(self.model.custom_properties),
-                selectinload(self.model.input_ports),
-                selectinload(self.model.output_ports).selectinload(OutputPortDb.sbom),
-                selectinload(self.model.output_ports).selectinload(OutputPortDb.input_contracts),
-                selectinload(self.model.management_ports),
-                selectinload(self.model.support_channels),
-                selectinload(self.model.team).selectinload(DataProductTeamDb.members)
+                # List view needs: output_ports (for contractId/deliveryMethodId) and team.members (for owner display)
+                selectinload(self.model.output_ports),
+                selectinload(self.model.team).selectinload(DataProductTeamDb.members),
+                # These are not rendered in the list view; suppress their auto-loading
+                noload(self.model.description),
+                noload(self.model.authoritative_definitions),
+                noload(self.model.custom_properties),
+                noload(self.model.input_ports),
+                noload(self.model.management_ports),
+                noload(self.model.support_channels),
             )
 
             # Apply project filtering only if not admin and project_id is provided

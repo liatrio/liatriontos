@@ -189,42 +189,27 @@ async def get_user_groups(user_email: str) -> List[str]:
 async def get_user_team_role_overrides(user_identifier: str, user_groups: List[str], request: Request) -> Optional[str]:
     """Get the highest team role override for a user."""
     try:
-        # Get teams manager from app state
-        teams_manager = getattr(request.app.state, 'teams_manager', None)
-        if not teams_manager:
-            logger.debug("Teams manager not available in app state")
-            return None
+        # Use a single targeted query against team_members instead of loading full team objects
+        from src.db_models.teams import TeamMemberDb
+        from sqlalchemy import or_, func as sa_func
 
-        # Get database session
         db = next(get_db())
         try:
-            # Get teams where user is a member
-            user_teams = teams_manager.get_teams_for_user(db, user_identifier)
-
-            # Normalize user groups to lowercase for case-insensitive matching
-            user_groups_lower = set(g.lower() for g in user_groups)
-
-            # Collect all role overrides for this user across teams
-            role_overrides = []
-            for team in user_teams:
-                for member in team.members:
-                    if member.member_identifier == user_identifier and member.app_role_override:
-                        role_overrides.append(member.app_role_override)
-
-            # Also check group memberships (case-insensitive)
-            for team in user_teams:
-                for member in team.members:
-                    if member.member_identifier.lower() in user_groups_lower and member.app_role_override:
-                        role_overrides.append(member.app_role_override)
-
-            if not role_overrides:
+            identifiers = list({user_identifier.lower()} | {g.lower() for g in user_groups})
+            overrides = (
+                db.query(TeamMemberDb.app_role_override)
+                .filter(
+                    TeamMemberDb.app_role_override.isnot(None),
+                    sa_func.lower(TeamMemberDb.member_identifier).in_(identifiers)
+                )
+                .all()
+            )
+            if not overrides:
                 return None
-
-            # Return the highest role override (assuming role names have hierarchical order)
-            # For now, just return the first one found - in practice you'd need proper role hierarchy
-            logger.debug("Found team role overrides for user %s: %s", user_identifier, role_overrides)
-            return role_overrides[0]
-
+            role_overrides = [r[0] for r in overrides if r[0]]
+            if role_overrides:
+                logger.debug("Found team role overrides for user %s: %s", user_identifier, role_overrides)
+            return role_overrides[0] if role_overrides else None
         finally:
             db.close()
     except Exception as e:

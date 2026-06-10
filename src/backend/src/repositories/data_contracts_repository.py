@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional, List, Union
 
 from sqlalchemy import or_, and_
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, selectinload, noload
 
 from src.common.repository import CRUDBase
 from src.db_models.data_contracts import (
@@ -121,7 +121,19 @@ class DataContractRepository(CRUDBase[DataContractDb, Dict[str, Any], Union[Dict
         """
         logger.debug(f"Fetching DataContracts (skip: {skip}, limit: {limit}, project_id: {project_id}, is_admin: {is_admin})")
         try:
-            query = db.query(self.model)
+            query = db.query(self.model).options(
+                # Suppress all selectin relationships — none are needed for list/summary views
+                noload(self.model.tags),
+                noload(self.model.servers),
+                noload(self.model.roles),
+                noload(self.model.team),
+                noload(self.model.support),
+                noload(self.model.pricing),
+                noload(self.model.authoritative_defs),
+                noload(self.model.custom_properties),
+                noload(self.model.sla_properties),
+                noload(self.model.team_metadata),
+            )
 
             # Apply project filtering only if not admin and project_id is provided
             if not is_admin and project_id:
