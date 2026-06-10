@@ -40,7 +40,7 @@ import { useProjectContext } from '@/stores/project-store';
  * Complex nested entities (ports, team, support) are edited in the details view.
  */
 
-const productTypes = ['source', 'source-aligned', 'aggregate', 'consumer-aligned', 'sink'] as const;
+const productTypes = ['source', 'source-aligned', 'aggregate', 'consumer-aligned', 'sink', 'knowledge-graph'] as const;
 
 const dataProductCreateSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
@@ -55,6 +55,11 @@ const dataProductCreateSchema = z.object({
   limitations: z.string().optional(),
   usage: z.string().optional(),
   tags: z.array(z.union([z.string(), z.any()])).optional(),
+  neo4jUrl: z.string().optional().or(z.literal('')),
+  neo4jUsername: z.string().optional().or(z.literal('')),
+  neo4jDatabase: z.string().optional().or(z.literal('')),
+  neo4jSecretScope: z.string().optional().or(z.literal('')),
+  neo4jSecretKey: z.string().optional().or(z.literal('')),
 });
 
 type FormData = z.infer<typeof dataProductCreateSchema>;
@@ -96,6 +101,11 @@ export default function DataProductCreateDialog({
       limitations: '',
       usage: '',
       tags: [],
+      neo4jUrl: '',
+      neo4jUsername: '',
+      neo4jDatabase: '',
+      neo4jSecretScope: '',
+      neo4jSecretKey: '',
     },
   });
 
@@ -112,6 +122,11 @@ export default function DataProductCreateDialog({
       if (mode === 'edit' && product) {
         // Populate form with existing product data
         const productType = product.customProperties?.find(p => p.property === 'productType')?.value as any;
+        const existingNeo4jPort = product.managementPorts?.find(p => !!p.url);
+        const neo4jUsername = existingNeo4jPort?.customProperties?.find(p => p.property === 'username')?.value || '';
+        const neo4jDatabase = existingNeo4jPort?.customProperties?.find(p => p.property === 'database')?.value || '';
+        const neo4jSecretScope = existingNeo4jPort?.customProperties?.find(p => p.property === 'secret_scope')?.value || '';
+        const neo4jSecretKey = existingNeo4jPort?.customProperties?.find(p => p.property === 'secret_key')?.value || '';
         form.reset({
           name: product.name || '',
           version: product.version || '0.0.1',
@@ -125,6 +140,11 @@ export default function DataProductCreateDialog({
           limitations: product.description?.limitations || '',
           usage: product.description?.usage || '',
           tags: product.tags || [],
+          neo4jUrl: existingNeo4jPort?.url || '',
+          neo4jUsername,
+          neo4jDatabase,
+          neo4jSecretScope,
+          neo4jSecretKey,
         });
       } else {
         // Reset to defaults for create mode, default to current project
@@ -141,6 +161,11 @@ export default function DataProductCreateDialog({
           limitations: '',
           usage: '',
           tags: [],
+          neo4jUrl: '',
+          neo4jUsername: '',
+          neo4jDatabase: '',
+          neo4jSecretScope: '',
+          neo4jSecretKey: '',
         });
       }
     }
@@ -207,6 +232,23 @@ export default function DataProductCreateDialog({
               description: 'Type of data product in the value chain',
             }] : []),
           ],
+          // Inject or update the Neo4j management port
+          managementPorts: [
+            ...(product.managementPorts?.filter(p => !p.url) || []),
+            ...(data.neo4jUrl ? [{
+              name: 'Knowledge Graph',
+              content: 'observability',
+              type: 'rest',
+              url: data.neo4jUrl,
+              description: 'Neo4j Knowledge Graph endpoint',
+              customProperties: [
+                ...(data.neo4jUsername ? [{ property: 'username', value: data.neo4jUsername }] : []),
+                ...(data.neo4jDatabase ? [{ property: 'database', value: data.neo4jDatabase }] : []),
+                ...(data.neo4jSecretScope ? [{ property: 'secret_scope', value: data.neo4jSecretScope }] : []),
+                ...(data.neo4jSecretKey ? [{ property: 'secret_key', value: data.neo4jSecretKey }] : []),
+              ],
+            }] : []),
+          ],
         };
 
         const response = await fetch(`/api/data-products/${product.id}`, {
@@ -263,7 +305,17 @@ export default function DataProductCreateDialog({
           // Initialize empty arrays for complex entities
           inputPorts: [],
           outputPorts: [],
-          managementPorts: [],
+          managementPorts: data.neo4jUrl ? [{
+            name: 'Knowledge Graph',
+            content: 'observability',
+            type: 'rest',
+            url: data.neo4jUrl,
+            description: 'Neo4j Knowledge Graph endpoint',
+            customProperties: [
+              ...(data.neo4jUsername ? [{ property: 'username', value: data.neo4jUsername }] : []),
+              ...(data.neo4jDatabase ? [{ property: 'database', value: data.neo4jDatabase }] : []),
+            ],
+          }] : [],
           support: [],
           authoritativeDefinitions: [],
           customProperties: data.productType ? [{
@@ -535,6 +587,63 @@ export default function DataProductCreateDialog({
               />
             </div>
           </div>
+
+          {/* Neo4j Endpoint — only for knowledge-graph products */}
+          {form.watch('productType') === 'knowledge-graph' && (
+            <div className="space-y-2 border-t pt-4">
+              <Label htmlFor="neo4jUrl">Neo4j Bolt URL</Label>
+              <Input
+                id="neo4jUrl"
+                {...form.register('neo4jUrl')}
+                placeholder="e.g., bolt://localhost:7687"
+              />
+              {form.formState.errors.neo4jUrl && (
+                <p className="text-sm text-red-500">{form.formState.errors.neo4jUrl.message}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Bolt URL of the Neo4j instance — enables the Knowledge Graph panel
+              </p>
+              <div className="grid grid-cols-2 gap-4 pt-1">
+                <div className="space-y-2">
+                  <Label htmlFor="neo4jUsername">Username</Label>
+                  <Input
+                    id="neo4jUsername"
+                    {...form.register('neo4jUsername')}
+                    placeholder="neo4j"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="neo4jDatabase">Database</Label>
+                  <Input
+                    id="neo4jDatabase"
+                    {...form.register('neo4jDatabase')}
+                    placeholder="neo4j"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 pt-1">
+                <div className="space-y-2">
+                  <Label htmlFor="neo4jSecretScope">Secret Scope</Label>
+                  <Input
+                    id="neo4jSecretScope"
+                    {...form.register('neo4jSecretScope')}
+                    placeholder="e.g., neo4j-prod"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="neo4jSecretKey">Secret Key</Label>
+                  <Input
+                    id="neo4jSecretKey"
+                    {...form.register('neo4jSecretKey')}
+                    placeholder="e.g., password"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground pt-1">
+                Secret Scope and Key refer to a Databricks UC Secret storing the Neo4j password. Falls back to <code>NEO4J_PASSWORD</code> env var locally.
+              </p>
+            </div>
+          )}
 
           {/* Tags Section */}
           <div className="space-y-2 border-t pt-4">

@@ -42,6 +42,7 @@ interface Neo4jSummary {
 
 interface Neo4jGraphPanelProps {
   managementPorts?: ManagementPort[];
+  productType?: string;
 }
 
 type LayoutType = 'breadthfirst' | 'circle' | 'cose' | 'concentric';
@@ -270,7 +271,7 @@ function GraphControls({
 
 // --- Main component ---
 
-export default function Neo4jGraphPanel({ managementPorts }: Neo4jGraphPanelProps) {
+export default function Neo4jGraphPanel({ managementPorts, productType }: Neo4jGraphPanelProps) {
   const [summary, setSummary] = useState<Neo4jSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -282,9 +283,7 @@ export default function Neo4jGraphPanel({ managementPorts }: Neo4jGraphPanelProp
   const fullCyRef = useRef<Core | null>(null);
   const layoutRef = useRef<any>(null);
 
-  const neo4jPort = managementPorts?.find(
-    p => p.url && (p.url.includes('neo4j') || p.name?.toLowerCase().includes('neo4j'))
-  );
+  const neo4jPort = managementPorts?.find(p => !!p.url);
 
   // Track dark mode
   useEffect(() => {
@@ -300,7 +299,17 @@ export default function Neo4jGraphPanel({ managementPorts }: Neo4jGraphPanelProp
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(neo4jPort.url);
+      const cp = neo4jPort.customProperties ?? [];
+      const username = cp.find(p => p.property === 'username')?.value;
+      const database = cp.find(p => p.property === 'database')?.value;
+      const secretScope = cp.find(p => p.property === 'secret_scope')?.value;
+      const secretKey = cp.find(p => p.property === 'secret_key')?.value;
+      const params = new URLSearchParams({ bolt_url: neo4jPort.url });
+      if (username) params.set('username', username);
+      if (database) params.set('database', database);
+      if (secretScope) params.set('secret_scope', secretScope);
+      if (secretKey) params.set('secret_key', secretKey);
+      const res = await fetch(`/api/neo4j/summary?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: Neo4jSummary = await res.json();
       setSummary(data);
@@ -370,7 +379,7 @@ export default function Neo4jGraphPanel({ managementPorts }: Neo4jGraphPanelProp
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wireEvents, runLayout]);
 
-  if (!neo4jPort) return null;
+  if (productType !== 'knowledge-graph' || !neo4jPort) return null;
 
   return (
     <>

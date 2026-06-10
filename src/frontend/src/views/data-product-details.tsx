@@ -1740,8 +1740,11 @@ export default function DataProductDetails() {
         </CardContent>
       </Card>
 
-      {/* Neo4j Knowledge Graph Summary (auto-detected from management ports) */}
-      <Neo4jGraphPanel managementPorts={product.managementPorts} />
+      {/* Neo4j Knowledge Graph Summary (knowledge-graph product type only) */}
+      <Neo4jGraphPanel
+        managementPorts={product.managementPorts}
+        productType={product.customProperties?.find(p => p.property === 'productType')?.value}
+      />
 
       {/* ODPS Structured Description */}
       {product.description && (
