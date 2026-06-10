@@ -280,9 +280,27 @@ class ManagementPortDb(Base):
     description = Column(Text, nullable=True)
 
     product = relationship("DataProductDb", back_populates="management_ports")
+    custom_properties = relationship("ManagementPortCustomPropertyDb", back_populates="management_port", cascade="all, delete-orphan", lazy="selectin")
 
     def __repr__(self):
         return f"<ManagementPortDb(name='{self.name}', content='{self.content}')>"
+
+
+class ManagementPortCustomPropertyDb(Base):
+    """Key/value custom properties scoped to a management port (e.g. secret_scope, secret_key)"""
+    __tablename__ = 'data_product_management_port_custom_properties'
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    management_port_id = Column(String, ForeignKey('data_product_management_ports.id'), nullable=False, index=True)
+
+    property = Column(String, nullable=False)
+    value = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+
+    management_port = relationship("ManagementPortDb", back_populates="custom_properties")
+
+    def __repr__(self):
+        return f"<ManagementPortCustomPropertyDb(property='{self.property}')>"
 
 
 # ============================================================================

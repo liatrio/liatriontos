@@ -285,7 +285,7 @@ export default function Neo4jGraphPanel({ managementPorts, productType }: Neo4jG
 
   // For products created before the productType field existed, fall back to URL/name heuristic
   const neo4jPort = managementPorts?.find(
-    productType === 'knowledge-graph'
+    productType === 'sink-graph-neo4j'
       ? (p) => !!p.url
       : (p) => !!p.url && (p.url.includes('neo4j') || p.name?.toLowerCase().includes('neo4j'))
   );
@@ -385,7 +385,7 @@ export default function Neo4jGraphPanel({ managementPorts, productType }: Neo4jG
   }, [wireEvents, runLayout]);
 
   if (!neo4jPort) return null;
-  if (productType && productType !== 'knowledge-graph') return null;
+  if (productType && productType !== 'sink-graph-neo4j') return null;
 
   return (
     <>

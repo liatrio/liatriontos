@@ -5,7 +5,7 @@ id: neo4j-kg-flight-ops
 name: Flight Operations Knowledge Graph
 version: "1.0.0"
 status: active
-productType: knowledge-graph
+productType: sink-graph-neo4j
 domain: flight-operations
 tenant: data-platform
 

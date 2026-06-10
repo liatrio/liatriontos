@@ -211,7 +211,7 @@ class ManagementPort(BaseModel):
     channel: Optional[str] = Field(None, description="Channel to communicate with the data product")
     description: Optional[str] = Field(None, description="Purpose and usage")
     tags: Optional[List[str]] = Field(None, description="Tags")
-    customProperties: Optional[List[CustomProperty]] = Field(None, description="Custom properties")
+    customProperties: Optional[List[CustomProperty]] = Field(None, alias="custom_properties", description="Custom properties")
     authoritativeDefinitions: Optional[List[AuthoritativeDefinition]] = Field(None, description="Authoritative definitions")
 
     model_config = {

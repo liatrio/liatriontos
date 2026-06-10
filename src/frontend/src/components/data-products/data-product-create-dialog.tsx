@@ -40,7 +40,16 @@ import { useProjectContext } from '@/stores/project-store';
  * Complex nested entities (ports, team, support) are edited in the details view.
  */
 
-const productTypes = ['source', 'source-aligned', 'aggregate', 'consumer-aligned', 'sink', 'knowledge-graph'] as const;
+const productTypes = ['source', 'source-aligned', 'aggregate', 'consumer-aligned', 'sink', 'sink-graph-neo4j'] as const;
+
+const productTypeLabels: Record<string, string> = {
+  'source': 'Source',
+  'source-aligned': 'Source-Aligned',
+  'aggregate': 'Aggregate',
+  'consumer-aligned': 'Consumer-Aligned',
+  'sink': 'Sink',
+  'sink-graph-neo4j': 'Sink - Graph (Neo4j)',
+};
 
 const dataProductCreateSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
@@ -314,6 +323,8 @@ export default function DataProductCreateDialog({
             customProperties: [
               ...(data.neo4jUsername ? [{ property: 'username', value: data.neo4jUsername }] : []),
               ...(data.neo4jDatabase ? [{ property: 'database', value: data.neo4jDatabase }] : []),
+              ...(data.neo4jSecretScope ? [{ property: 'secret_scope', value: data.neo4jSecretScope }] : []),
+              ...(data.neo4jSecretKey ? [{ property: 'secret_key', value: data.neo4jSecretKey }] : []),
             ],
           }] : [],
           support: [],
@@ -451,7 +462,7 @@ export default function DataProductCreateDialog({
                 <SelectContent>
                   {productTypes.map((type) => (
                     <SelectItem key={type} value={type}>
-                      {type.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                      {productTypeLabels[type] ?? type.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -588,8 +599,8 @@ export default function DataProductCreateDialog({
             </div>
           </div>
 
-          {/* Neo4j Endpoint — only for knowledge-graph products */}
-          {form.watch('productType') === 'knowledge-graph' && (
+          {/* Neo4j Endpoint — only for sink-graph-neo4j products */}
+          {form.watch('productType') === 'sink-graph-neo4j' && (
             <div className="space-y-2 border-t pt-4">
               <Label htmlFor="neo4jUrl">Neo4j Bolt URL</Label>
               <Input

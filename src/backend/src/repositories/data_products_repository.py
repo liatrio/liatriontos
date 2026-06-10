@@ -35,6 +35,7 @@ from src.db_models.data_products import (
     InputPortDb,
     OutputPortDb,
     ManagementPortDb,
+    ManagementPortCustomPropertyDb,
     SupportDb,
     DataProductTeamDb,
     DataProductTeamMemberDb,
@@ -171,6 +172,13 @@ class DataProductRepository(CRUDBase[DataProductDb, DataProductCreate, DataProdu
                         channel=mgmt_port.channel,
                         description=mgmt_port.description
                     )
+                    if mgmt_port.customProperties:
+                        for cp in mgmt_port.customProperties:
+                            mgmt_obj.custom_properties.append(ManagementPortCustomPropertyDb(
+                                property=cp.property,
+                                value=cp.value if isinstance(cp.value, str) else json.dumps(cp.value),
+                                description=cp.description
+                            ))
                     db_obj.management_ports.append(mgmt_obj)
 
             # 8. Create Support Channels (One-to-Many)
@@ -392,6 +400,12 @@ class DataProductRepository(CRUDBase[DataProductDb, DataProductCreate, DataProdu
                         channel=mgmt_dict.get('channel'),
                         description=mgmt_dict.get('description')
                     )
+                    for cp_dict in mgmt_dict.get('customProperties') or []:
+                        mgmt_obj.custom_properties.append(ManagementPortCustomPropertyDb(
+                            property=cp_dict['property'],
+                            value=cp_dict.get('value'),
+                            description=cp_dict.get('description')
+                        ))
                     db_obj.management_ports.append(mgmt_obj)
 
             # 8. Update Support Channels (replace all)
@@ -477,7 +491,7 @@ class DataProductRepository(CRUDBase[DataProductDb, DataProductCreate, DataProdu
                 selectinload(self.model.input_ports),
                 selectinload(self.model.output_ports).selectinload(OutputPortDb.sbom),
                 selectinload(self.model.output_ports).selectinload(OutputPortDb.input_contracts),
-                selectinload(self.model.management_ports),
+                selectinload(self.model.management_ports).selectinload(ManagementPortDb.custom_properties),
                 selectinload(self.model.support_channels),
                 selectinload(self.model.team).selectinload(DataProductTeamDb.members)
             ).filter(self.model.id == id).first()
