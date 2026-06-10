@@ -5,7 +5,7 @@ id: neo4j-kg-flight-ops
 name: Flight Operations Knowledge Graph
 version: "1.0.0"
 status: active
-productType: aggregate
+productType: knowledge-graph
 domain: flight-operations
 tenant: data-platform
 
@@ -35,9 +35,12 @@ outputPorts:
 managementPorts:
   - name: neo4j-live-summary
     content: observability
-    port_type: rest
-    url: "http://localhost:8000/api/neo4j/summary?bolt_url=bolt://<neo4j-host>:7687&database=neo4j"
+    port_type: neo4j-graph
+    url: "bolt://localhost:7687"
     description: Live graph metadata — node counts, relationships, freshness.
+    customProperties:
+      - property: database
+        value: neo4j
 
 tags:
   - neo4j

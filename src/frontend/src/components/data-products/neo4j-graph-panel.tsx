@@ -283,7 +283,12 @@ export default function Neo4jGraphPanel({ managementPorts, productType }: Neo4jG
   const fullCyRef = useRef<Core | null>(null);
   const layoutRef = useRef<any>(null);
 
-  const neo4jPort = managementPorts?.find(p => !!p.url);
+  // For products created before the productType field existed, fall back to URL/name heuristic
+  const neo4jPort = managementPorts?.find(
+    productType === 'knowledge-graph'
+      ? (p) => !!p.url
+      : (p) => !!p.url && (p.url.includes('neo4j') || p.name?.toLowerCase().includes('neo4j'))
+  );
 
   // Track dark mode
   useEffect(() => {
@@ -379,7 +384,8 @@ export default function Neo4jGraphPanel({ managementPorts, productType }: Neo4jG
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wireEvents, runLayout]);
 
-  if (productType !== 'knowledge-graph' || !neo4jPort) return null;
+  if (!neo4jPort) return null;
+  if (productType && productType !== 'knowledge-graph') return null;
 
   return (
     <>
