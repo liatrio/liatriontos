@@ -177,6 +177,9 @@ Tests are marked with `smoke`, `readonly`, or `crud` for selective execution in 
 4. **Catalog sync** — `sync-graph-attributes` endpoint, Dataset asset creation, attribute linking.
 5. **E2E tests** — Written against a demo product; require a local Neo4j instance seeded with the demo graph.
 
+> **Addendum — Alembic migrations fail after Databricks App deploy:**
+> On Databricks Apps + Lakebase (Neon), every `bundle deploy` + `bundle run` cycle resets the Lakebase schema grants for the app service principal (this is a platform limitation and cannot be fixed in the app code). This causes the SP to lose `USAGE` and `CREATE` on the `app_ontos` schema and all table-level privileges within it, which prevents Alembic from reading or writing the `alembic_version` table and applying any pending migrations. The result is that the `data_product_management_port_custom_properties` table introduced in phase 2 (`aa1_mgmt_port_custom_props`) will not be created on a fresh deploy. This issue does not affect local development.
+
 ### Relationship to Existing Features
 
 - **Management Ports (ODPS)**: The Neo4j connection is stored as a management port with `content: "observability"`. This is consistent with the ODPS specification's intent for management ports — operational endpoints for monitoring and observability of the product's infrastructure. No new database columns or schema changes are required.
