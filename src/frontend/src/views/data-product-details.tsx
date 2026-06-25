@@ -1742,6 +1742,8 @@ export default function DataProductDetails() {
 
       {/* Neo4j Graph Summary (sink-graph-neo4j product type only) */}
       <Neo4jGraphPanel
+        productId={product.id}
+        outputPorts={product.outputPorts}
         managementPorts={product.managementPorts}
         productType={product.customProperties?.find(p => p.property === 'productType')?.value}
       />

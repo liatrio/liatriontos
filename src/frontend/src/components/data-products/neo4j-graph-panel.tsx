@@ -12,7 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Loader2, RefreshCw, Database, Circle, ZoomIn, ZoomOut, Maximize, RotateCcw, Expand } from 'lucide-react';
-import type { ManagementPort } from '@/types/data-product';
+import type { ManagementPort, OutputPort } from '@/types/data-product';
 
 // --- Types ---
 
@@ -27,7 +27,6 @@ interface Neo4jSummary {
   connected: boolean;
   error: string | null;
   database: string;
-  bolt_url: string;
   graph: {
     node_labels: string[];
     relationship_types: string[];
@@ -41,6 +40,8 @@ interface Neo4jSummary {
 }
 
 interface Neo4jGraphPanelProps {
+  productId?: string;
+  outputPorts?: OutputPort[];
   managementPorts?: ManagementPort[];
   productType?: string;
 }
@@ -271,7 +272,12 @@ function GraphControls({
 
 // --- Main component ---
 
-export default function Neo4jGraphPanel({ managementPorts, productType }: Neo4jGraphPanelProps) {
+export default function Neo4jGraphPanel({
+  productId,
+  outputPorts,
+  managementPorts,
+  productType,
+}: Neo4jGraphPanelProps) {
   const [summary, setSummary] = useState<Neo4jSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -283,11 +289,24 @@ export default function Neo4jGraphPanel({ managementPorts, productType }: Neo4jG
   const fullCyRef = useRef<Core | null>(null);
   const layoutRef = useRef<any>(null);
 
-  // For products created before the productType field existed, fall back to URL/name heuristic
-  const neo4jPort = managementPorts?.find(
-    productType === 'sink-graph-neo4j'
-      ? (p) => !!p.url
-      : (p) => !!p.url && (p.url.includes('neo4j') || p.name?.toLowerCase().includes('neo4j'))
+  const hasNeo4jOutput = outputPorts?.some((port) => {
+    const type = port.type?.toLowerCase() ?? '';
+    const host = port.server?.host?.toLowerCase() ?? '';
+    return type.includes('neo4j') || host.includes('bolt') || host.includes('neo4j');
+  }) ?? false;
+
+  // Preserve the management-port heuristic for older products, but prefer the
+  // same output-port model the backend uses.
+  const hasNeo4jManagementPort = managementPorts?.some(
+    (port) => !!port.url && (port.url.includes('neo4j') || port.url.includes('bolt') || port.name?.toLowerCase().includes('neo4j'))
+  ) ?? false;
+
+  const shouldRenderPanel = Boolean(
+    productId && (
+      productType === 'sink-graph-neo4j' ||
+      hasNeo4jOutput ||
+      hasNeo4jManagementPort
+    )
   );
 
   // Track dark mode
@@ -300,21 +319,11 @@ export default function Neo4jGraphPanel({ managementPorts, productType }: Neo4jG
   }, []);
 
   const fetchSummary = useCallback(async () => {
-    if (!neo4jPort?.url) return;
+    if (!shouldRenderPanel || !productId) return;
     setLoading(true);
     setError(null);
     try {
-      const cp = neo4jPort.customProperties ?? [];
-      const username = cp.find(p => p.property === 'username')?.value;
-      const database = cp.find(p => p.property === 'database')?.value;
-      const secretScope = cp.find(p => p.property === 'secret_scope')?.value;
-      const secretKey = cp.find(p => p.property === 'secret_key')?.value;
-      const params = new URLSearchParams({ bolt_url: neo4jPort.url });
-      if (username) params.set('username', username);
-      if (database) params.set('database', database);
-      if (secretScope) params.set('secret_scope', secretScope);
-      if (secretKey) params.set('secret_key', secretKey);
-      const res = await fetch(`/api/neo4j/summary?${params}`);
+      const res = await fetch(`/api/neo4j/${productId}/summary`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: Neo4jSummary = await res.json();
       setSummary(data);
@@ -323,11 +332,11 @@ export default function Neo4jGraphPanel({ managementPorts, productType }: Neo4jG
     } finally {
       setLoading(false);
     }
-  }, [neo4jPort?.url]);
+  }, [productId, shouldRenderPanel]);
 
   useEffect(() => {
-    if (neo4jPort?.url) fetchSummary();
-  }, [neo4jPort?.url]);
+    if (shouldRenderPanel) fetchSummary();
+  }, [fetchSummary, shouldRenderPanel]);
 
   const elements = useMemo(() => (summary?.connected ? buildElements(summary) : []), [summary]);
   const stylesheet = useMemo(() => buildStylesheet(isDarkMode), [isDarkMode]);
@@ -384,8 +393,7 @@ export default function Neo4jGraphPanel({ managementPorts, productType }: Neo4jG
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wireEvents, runLayout]);
 
-  if (!neo4jPort) return null;
-  if (productType && productType !== 'sink-graph-neo4j') return null;
+  if (!shouldRenderPanel) return null;
 
   return (
     <>
